@@ -4,12 +4,12 @@ pragma solidity ^0.8.0;
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 
-contract StakingPool is Ownable(msg.sender) {  // Fixed: Added msg.sender to Ownable constructor
-    IERC20 public stakingToken;    // Token that users will stake
-    IERC20 public rewardToken;     // Token that users will get as reward
+contract StakingPool is Ownable(msg.sender) {
+    IERC20 public stakingToken;
+    IERC20 public rewardToken;
     
-    uint256 public constant LOCK_PERIOD = 90 days;  // 3 months lock period
-    uint256 public constant REWARD_RATE = 15;       // 15% APR
+    uint256 public constant LOCK_PERIOD = 90 days;
+    uint256 public constant REWARD_RATE = 15;
     
     struct Stake {
         uint256 amount;
@@ -57,12 +57,12 @@ contract StakingPool is Ownable(msg.sender) {  // Fixed: Added msg.sender to Own
     function calculateRewards(address _staker) public view returns (uint256) {
         if (!stakes[_staker].exists) return 0;
         
-        Stake memory stake = stakes[_staker];
-        uint256 timeStaked = block.timestamp - stake.timestamp;
+        Stake memory userStake = stakes[_staker]; 
+        uint256 timeStaked = block.timestamp - userStake.timestamp;
         
         if (timeStaked < LOCK_PERIOD) return 0;
         
-        uint256 rewardAmount = stake.amount *
+        uint256 rewardAmount = userStake.amount *
             REWARD_RATE *
             timeStaked /
             (365 days) /
@@ -79,9 +79,9 @@ contract StakingPool is Ownable(msg.sender) {  // Fixed: Added msg.sender to Own
         
         stakes[msg.sender].isProcessing = true;
         
-        Stake memory stake = stakes[msg.sender];
+        Stake memory userStake = stakes[msg.sender];  
         uint256 rewardAmount = calculateRewards(msg.sender);
-        uint256 stakeAmount = stake.amount;
+        uint256 stakeAmount = userStake.amount;
         
         totalStaked = totalStaked - stakeAmount;
         delete stakes[msg.sender];
@@ -104,12 +104,12 @@ contract StakingPool is Ownable(msg.sender) {  // Fixed: Added msg.sender to Own
         uint256 rewards,
         bool exists
     ) {
-        Stake memory stake = stakes[_staker];
+        Stake memory userStake = stakes[_staker];  
         return (
-            stake.amount,
-            stake.timestamp,
+            userStake.amount,
+            userStake.timestamp,
             calculateRewards(_staker),
-            stake.exists
+            userStake.exists
         );
     }
     
