@@ -16,7 +16,6 @@ contract StakingPool is Ownable(msg.sender) {
         uint256 timestamp;
         uint256 rewards;
         bool exists;
-        bool isProcessing;
     }
     
     mapping(address => Stake) public stakes;
@@ -34,23 +33,19 @@ contract StakingPool is Ownable(msg.sender) {
     function stake(uint256 _amount) external {
         require(_amount > 0, "Cannot stake 0 tokens");
         require(!stakes[msg.sender].exists, "Already staking");
-        require(!stakes[msg.sender].isProcessing, "Transaction in progress");
         
-        stakes[msg.sender].isProcessing = true;
         
         stakes[msg.sender] = Stake({
             amount: _amount,
             timestamp: block.timestamp,
             rewards: 0,
-            exists: true,
-            isProcessing: false
+            exists: true
         });
         
         totalStaked = totalStaked + _amount;
         
-        require(stakingToken.transferFrom(msg.sender, address(this), _amount), 
-                "Transfer failed");
-        
+        IERC20(stakingToken).transferFrom(msg.sender, address(this), _amount);
+
         emit Staked(msg.sender, _amount);
     }
     
@@ -73,11 +68,8 @@ contract StakingPool is Ownable(msg.sender) {
     
     function unstake() external {
         require(stakes[msg.sender].exists, "No active stake");
-        require(!stakes[msg.sender].isProcessing, "Transaction in progress");
         require(block.timestamp >= stakes[msg.sender].timestamp + LOCK_PERIOD,
                 "Lock period not over");
-        
-        stakes[msg.sender].isProcessing = true;
         
         Stake memory userStake = stakes[msg.sender];  
         uint256 rewardAmount = calculateRewards(msg.sender);
