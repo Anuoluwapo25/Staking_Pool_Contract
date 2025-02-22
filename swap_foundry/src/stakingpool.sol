@@ -14,6 +14,7 @@ contract StakingPool is Ownable {
     struct Pool {
         uint lockPeriod;    
         uint percentage;    
+        bool exists;       // Added exists field to match struct usage
     }
 
     struct Stake {
@@ -27,7 +28,7 @@ contract StakingPool is Ownable {
     event Staked(address indexed user, uint indexed poolId, uint amount);
     event Withdrawn(address indexed user, uint amount, uint reward);
 
-    constructor(address _stakingToken) {
+    constructor(address _stakingToken) Ownable(msg.sender) {  // Fixed Ownable constructor
         stakingToken = IERC20(_stakingToken);
     }
 
@@ -50,7 +51,6 @@ contract StakingPool is Ownable {
         require(pools[_poolId].exists, "Pool must exist");
         require(!stakes[msg.sender].exists, "User already has an active stake");
 
-        // Transfer tokens from user to contract
         require(stakingToken.transferFrom(msg.sender, address(this), _amount), 
             "Token transfer failed");
 
@@ -70,12 +70,11 @@ contract StakingPool is Ownable {
         Stake memory userStake = stakes[_staker];
         Pool memory userPool = pools[userStake.poolId];
         
-        
         uint reward = (userStake.amount * userPool.percentage) / 100;
         return reward;
     }
 
-    function withdrawstake() external {
+    function withdrawStake() external {  // Fixed function name casing
         require(stakes[msg.sender].exists, "No active stake found");
         
         Stake memory userStake = stakes[msg.sender];
@@ -83,20 +82,19 @@ contract StakingPool is Ownable {
         
         uint timeStaked = block.timestamp - userStake.timestamp;
         require(timeStaked >= userPool.lockPeriod, "Staking period not completed");
-        require(stakingToken.transfer(msg.sender, amount), "Stake transfer failed");
-        require(stakingToken.transfer(msg.sender, reward), "Reward transfer failed");
 
         uint reward = calculateRewards(msg.sender);
         uint amount = userStake.amount;
 
-        delete stakes[msg.sender];
+        require(stakingToken.transfer(msg.sender, amount), "Stake transfer failed");
+        require(stakingToken.transfer(msg.sender, reward), "Reward transfer failed");
 
+        delete stakes[msg.sender];
 
         emit Withdrawn(msg.sender, amount, reward);
     }
 
     function getStakeInfo(address _staker) external view returns (Stake memory) {
-    return stakes[_staker];
+        return stakes[_staker];
     }
-
 }
