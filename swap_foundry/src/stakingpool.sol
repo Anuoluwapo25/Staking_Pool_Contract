@@ -14,7 +14,7 @@ contract StakingPool is Ownable {
     struct Pool {
         uint lockPeriod;    
         uint percentage;    
-        bool exists;       // Added exists field to match struct usage
+        bool exists;       
     }
 
     struct Stake {
@@ -28,7 +28,7 @@ contract StakingPool is Ownable {
     event Staked(address indexed user, uint indexed poolId, uint amount);
     event Withdrawn(address indexed user, uint amount, uint reward);
 
-    constructor(address _stakingToken) Ownable(msg.sender) {  // Fixed Ownable constructor
+    constructor(address _stakingToken) Ownable(msg.sender) {  
         stakingToken = IERC20(_stakingToken);
     }
 
@@ -74,7 +74,7 @@ contract StakingPool is Ownable {
         return reward;
     }
 
-    function withdrawStake() external {  // Fixed function name casing
+    function withdrawStake() external {  
         require(stakes[msg.sender].exists, "No active stake found");
         
         Stake memory userStake = stakes[msg.sender];

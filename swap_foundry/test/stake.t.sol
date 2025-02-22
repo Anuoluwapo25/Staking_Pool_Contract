@@ -37,7 +37,6 @@ contract StakingPoolTest is Test {
         emit PoolCreated(0, 30 days, 20);
         stakingPool.createPool(30 days, 20);
 
-        // Get pool values individually instead of using struct
         (uint lockPeriod, uint percentage, bool exists) = stakingPool.pools(0);
         assertEq(lockPeriod, 30 days);
         assertEq(percentage, 20);
