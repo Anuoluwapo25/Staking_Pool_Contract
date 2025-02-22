@@ -6,129 +6,97 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 
 contract StakingPool is Ownable {
     IERC20 public stakingToken;
-    IERC20 public rewardToken;
-    
-    uint256 public constant LOCK_PERIOD = 90 days;
-    uint256 public constant REWARD_RATE = 15;
-    
-    struct Stake {
-        uint256 amount;
-        uint256 timestamp;
-        uint256 rewards;
-        bool exists;
-    }
-    
+    uint public poolId;
+
     mapping(address => Stake) public stakes;
-    uint256 public totalStaked;
-    
-    event Staked(address indexed user, uint256 amount);
-    event Unstaked(address indexed user, uint256 amount);
-    event RewardsClaimed(address indexed user, uint256 amount);
-    event TokensSwapped(address indexed user, uint256 amountIn, uint256 amountOut);
-    
-    constructor(address _stakingToken, address _rewardToken) {
-        stakingToken = IERC20(_stakingToken);
-        rewardToken = IERC20(_rewardToken);
+    mapping(uint => Pool) public pools;
+
+    struct Pool {
+        uint lockPeriod;    
+        uint percentage;    
     }
-    
-    function stake(uint256 _amount) external {
-        require(_amount > 0, "Cannot stake 0 tokens");
-        require(!stakes[msg.sender].exists, "Already staking");
-        
-        stakes[msg.sender] = Stake({
-            amount: _amount,
-            timestamp: block.timestamp,
-            rewards: 0,
+
+    struct Stake {
+        uint poolId;       
+        uint amount;       
+        uint timestamp;     
+        bool exists;       
+    }
+
+    event PoolCreated(uint indexed poolId, uint lockPeriod, uint percentage);
+    event Staked(address indexed user, uint indexed poolId, uint amount);
+    event Withdrawn(address indexed user, uint amount, uint reward);
+
+    constructor(address _stakingToken) {
+        stakingToken = IERC20(_stakingToken);
+    }
+
+    function createPool(uint _lockPeriod, uint _percentage) external onlyOwner {
+        require(_lockPeriod > 0, "Lock period must be greater than zero");
+        require(_percentage > 0 && _percentage <= 100, "Percentage must be between 1 and 100");
+
+        pools[poolId] = Pool({
+            lockPeriod: _lockPeriod,
+            percentage: _percentage,
             exists: true
         });
-        
-        totalStaked = totalStaked + _amount;
-        
-        IERC20(stakingToken).transferFrom(msg.sender, address(this), _amount);
 
-        emit Staked(msg.sender, _amount);
+        emit PoolCreated(poolId, _lockPeriod, _percentage);
+        poolId++;
     }
-    
-    function calculateRewards(address _staker) public view returns (uint256) {
-        if (!stakes[_staker].exists) return 0;
-        
-        Stake memory userStake = stakes[_staker]; 
-        uint256 timeStaked = block.timestamp - userStake.timestamp;
-        
-        if (timeStaked < LOCK_PERIOD) return 0;
-        
-        uint256 rewardAmount = userStake.amount *
-            REWARD_RATE *
-            timeStaked /
-            (365 days) /
-            100;
-            
-        return rewardAmount;
+
+    function stake(uint _amount, uint _poolId) external {
+        require(_amount > 0, "Amount must be greater than zero");
+        require(pools[_poolId].exists, "Pool must exist");
+        require(!stakes[msg.sender].exists, "User already has an active stake");
+
+        // Transfer tokens from user to contract
+        require(stakingToken.transferFrom(msg.sender, address(this), _amount), 
+            "Token transfer failed");
+
+        stakes[msg.sender] = Stake({
+            poolId: _poolId,
+            amount: _amount,
+            timestamp: block.timestamp,
+            exists: true
+        });
+
+        emit Staked(msg.sender, _poolId, _amount);
     }
-    
-    function unstake() external {
-        require(stakes[msg.sender].exists, "No active stake");
-        require(block.timestamp >= stakes[msg.sender].timestamp + LOCK_PERIOD,
-                "Lock period not over");
+
+    function calculateRewards(address _staker) public view returns (uint) {
+        require(stakes[_staker].exists, "Staker does not exist");
         
-        Stake memory userStake = stakes[msg.sender];  
-        uint256 rewardAmount = calculateRewards(msg.sender);
-        uint256 stakeAmount = userStake.amount;
+        Stake memory userStake = stakes[_staker];
+        Pool memory userPool = pools[userStake.poolId];
         
-        totalStaked = totalStaked - stakeAmount;
+        
+        uint reward = (userStake.amount * userPool.percentage) / 100;
+        return reward;
+    }
+
+    function withdrawstake() external {
+        require(stakes[msg.sender].exists, "No active stake found");
+        
+        Stake memory userStake = stakes[msg.sender];
+        Pool memory userPool = pools[userStake.poolId];
+        
+        uint timeStaked = block.timestamp - userStake.timestamp;
+        require(timeStaked >= userPool.lockPeriod, "Staking period not completed");
+        require(stakingToken.transfer(msg.sender, amount), "Stake transfer failed");
+        require(stakingToken.transfer(msg.sender, reward), "Reward transfer failed");
+
+        uint reward = calculateRewards(msg.sender);
+        uint amount = userStake.amount;
+
         delete stakes[msg.sender];
-        
-        require(stakingToken.transfer(msg.sender, stakeAmount),
-                "Stake transfer failed");
-                
-        if (rewardAmount > 0) {
-            require(rewardToken.transfer(msg.sender, rewardAmount),
-                    "Reward transfer failed");
-            emit RewardsClaimed(msg.sender, rewardAmount);
-        }
-        
-        emit Unstaked(msg.sender, stakeAmount);
-    }
-    
-    function getStakeInfo(address _staker) external view returns (
-        uint256 amount,
-        uint256 timestamp,
-        uint256 rewards,
-        bool exists
-    ) {
-        Stake memory userStake = stakes[_staker];  
-        return (
-            userStake.amount,
-            userStake.timestamp,
-            calculateRewards(_staker),
-            userStake.exists
-        );
-    }
-    
-    function swapTokens(uint256 _amountIn, address _toToken) external {
-        require(_amountIn > 0, "Cannot swap 0 tokens");
-        
-        // Ensure the user has enough tokens for the swap
-        if (_toToken == address(stakingToken)) {
-            require(rewardToken.transferFrom(msg.sender, address(this), _amountIn), "Transfer failed");
-            require(stakingToken.transfer(msg.sender, _amountIn), "Swap failed");
-        } else if (_toToken == address(rewardToken)) {
-            require(stakingToken.transferFrom(msg.sender, address(this), _amountIn), "Transfer failed");
-            require(rewardToken.transfer(msg.sender, _amountIn), "Swap failed");
-        } else {
-            revert("Invalid token address");
-        }
 
-        emit TokensSwapped(msg.sender, _amountIn, _amountIn);  // This assumes a 1:1 swap rate for simplicity
-    }
-    
-    function withdrawRewardTokens(uint256 _amount) external onlyOwner {
-        require(rewardToken.transfer(owner(), _amount), "Transfer failed");
+
+        emit Withdrawn(msg.sender, amount, reward);
     }
 
-    // Owner function to remove tokens from the pool (emergency or balance maintenance)
-    function removeTokensFromPool(uint256 _amount) external onlyOwner {
-        require(_amount <= stakingToken.balanceOf(address(this)), "Insufficient funds in pool");
-        require(stakingToken.transfer(owner(), _amount), "Transfer failed");
+    function getStakeInfo(address _staker) external view returns (Stake memory) {
+    return stakes[_staker];
     }
+
 }
